@@ -28,6 +28,7 @@ app.add_middleware(
         r"192\.168\.\d+\.\d+|"
         r"10\.\d+\.\d+\.\d+):5173$"
     ),
+    allow_origins=["https://your-app.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
