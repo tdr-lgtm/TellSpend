@@ -2,7 +2,6 @@
 name = "tellspend"
 version = "0.1.0"
 description = "Add your description here"
-readme = "README.md"
 authors = [
     { name = "tdr-lgtm", email = "tdrv871@email.com" }
 ]
