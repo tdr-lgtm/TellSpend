@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 900">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#25D96B"/>
+      <stop offset="100%" stop-color="#008F8C"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-opacity=".16"/>
+    </filter>
+  </defs>
+
+  <!-- Icon -->
+  <g filter="url(#shadow)">
+    <path d="M184 300c0-88 72-160 160-160h212c88 0 160 72 160 160v142c0 88-72 160-160 160H430l-78 58c-13 10-32 1-32-16v-42h-16c-66 0-120-54-120-120V300z"
+          fill="url(#brand)"/>
+  </g>
+
+  <!-- Receipt -->
+  <g>
+    <path d="M344 240h244c24 0 42 19 42 43v218c0 20-16 36-36 36H332c-22 0-39-20-34-42l27-217c4-22 10-38 19-38z"
+          fill="#FAFAF4"/>
+    <path d="M588 240c23 0 42 19 42 43v36c-13-14-29-22-48-22h-30v-57h36z"
+          fill="#D9E8E4"/>
+    <path d="M333 537l30 28 30-28 30 28 30-28 30 28 30-28 30 28 30-28 30 28 30-28 30 28 30-28 30 28v-42H326z"
+          fill="#FAFAF4"/>
+  </g>
+
+  <!-- Receipt lines -->
+  <g stroke="#789A9C" stroke-width="14" stroke-linecap="round">
+    <path d="M366 314h132"/>
+    <path d="M355 365h82"/>
+    <path d="M349 416h72"/>
+    <path d="M343 467h63"/>
+  </g>
+
+  <!-- Rupee -->
+  <path d="M505 355h70M505 383h70M520 404l61 78M523 404h31c29 0 45-13 45-34s-16-34-45-34h-38"
+        fill="none" stroke="#006F73" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Accent strokes -->
+  <g fill="url(#brand)">
+    <rect x="210" y="112" width="22" height="65" rx="11" transform="rotate(-38 221 144)"/>
+    <rect x="272" y="76" width="22" height="65" rx="11" transform="rotate(-10 283 108)"/>
+    <rect x="330" y="112" width="22" height="52" rx="11" transform="rotate(22 341 138)"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="450" y="735" text-anchor="middle"
+        font-family="Inter, Arial, Helvetica, sans-serif"
+        font-size="118" font-weight="750" letter-spacing="-5">
+    <tspan fill="#142033">Tell</tspan><tspan fill="url(#brand)">Spend</tspan>
+  </text>
+</svg>
