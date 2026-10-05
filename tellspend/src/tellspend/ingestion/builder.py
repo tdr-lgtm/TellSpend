@@ -3741,9 +3741,13 @@ def build_result(
         "expenses": [facts.keep_expense(e) for e in extracted.expenses],
         "repayments": [r for r in extracted.repayments if facts.keep_repayment(r)],
     })
+    # Only what the user typed is listed back: the model sometimes quotes
+    # the app's own context (the date, the user's name) as an instruction
+    # or a part it skipped, and that must never be shown as theirs.
+    typed = _normalize(text)
     ignored = [
         f"“{span.strip()}” tells the assistant what to do rather than saying what happened, so it was ignored."
-        for span in extracted.instructions if span.strip()
+        for span in extracted.instructions if _normalize(span) and _normalize(span) in typed
     ]
 
     def builder(**extra) -> Builder:
@@ -3885,5 +3889,6 @@ def build_result(
         expenses=expenses,
         repayments=repayments,
         expected=[draft for draft in expected_drafts if draft is not None],
-        skipped=[*ignored, *not_happened, *(skipped_message(part) for part in extracted.not_recorded)],
+        skipped=[*ignored, *not_happened, *(skipped_message(part) for part in extracted.not_recorded
+                                            if _normalize(part.excerpt) in typed)],
     )

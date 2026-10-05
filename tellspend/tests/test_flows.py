@@ -1276,6 +1276,24 @@ def test_words_outside_the_instruction_still_count_even_if_repeated_inside_it():
     assert draft.participants == []
 
 
+def test_the_apps_own_context_is_never_listed_back_as_the_users():
+    # Given gibberish, the model quoted the prompt's context lines as
+    # "instructions" and "skipped" parts; none of it is what the user typed.
+    text = "likasdhjf"
+    extracted = ExtractedExpenses.model_validate({
+        "instructions": [
+            "Reference date: 2026-10-05",
+            "The user's own name: <user_name>Test</user_name>. When the text uses this name, it means the user.",
+        ],
+        "expenses": [],
+        "not_recorded": [{"excerpt": "Reference date: 2026-10-05", "kind": "other"}],
+    })
+    result = build_result(extracted, text, USER, CONTACTS, dt.date(2026, 9, 29))
+
+    assert result.skipped == []
+    assert result.expenses == []
+
+
 # ---------- money between people: what it was ----------
 
 
