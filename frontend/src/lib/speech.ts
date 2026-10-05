@@ -33,6 +33,11 @@ function recognitionClass(): RecognitionConstructor | undefined {
 
 export const speechSupported = typeof window !== "undefined" && recognitionClass() !== undefined;
 
+// Chrome on Android, in continuous mode, sends every result again with
+// the words before it, so they repeat ("lunch lunch 350"): there, one
+// sentence at a time, which ends on its own after a pause anyway.
+const isAndroid = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+
 export function createRecognition(continuous: boolean): Recognition | null {
   const Recognizer = recognitionClass();
   if (!Recognizer) {
@@ -41,7 +46,7 @@ export function createRecognition(continuous: boolean): Recognition | null {
   const recognition = new Recognizer();
   // The device's language (e.g. en-IN), so local names and numbers work.
   recognition.lang = navigator.language || "en-US";
-  recognition.continuous = continuous;
+  recognition.continuous = continuous && !isAndroid;
   recognition.interimResults = true;
   return recognition;
 }

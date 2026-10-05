@@ -41,23 +41,19 @@ export function useDictation(onText: (spoken: string) => void) {
       return;
     }
 
-    let finals = "";
     const waitForSilence = () => {
       window.clearTimeout(silence.current);
       silence.current = window.setTimeout(() => recognizer.stop(), SILENCE_MS);
     };
 
+    // The whole text, rebuilt from every result each time rather than
+    // added to, so a result sent again never doubles words.
     recognizer.onresult = (event: RecognitionEvent) => {
-      let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          finals = joinText(finals, result[0].transcript);
-        } else {
-          interim = joinText(interim, result[0].transcript);
-        }
+      const parts: string[] = [];
+      for (let i = 0; i < event.results.length; i += 1) {
+        parts.push(event.results[i][0].transcript);
       }
-      onTextRef.current(joinText(finals, interim));
+      onTextRef.current(joinText(...parts));
       waitForSilence();
     };
     recognizer.onerror = (event) => setError(speechErrorMessage(event.error));
