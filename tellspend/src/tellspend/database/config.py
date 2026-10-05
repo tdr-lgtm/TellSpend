@@ -33,11 +33,13 @@ class Settings(BaseSettings):
 
     # How emails are sent: "console" prints them in the server's log (for
     # development: click the link there); "smtp" sends them for real with
-    # the settings below.
+    # the settings below; "brevo" sends them through Brevo's HTTPS API
+    # (for hosts that block the SMTP ports).
     email_backend: str = Field(
         default="console",
-        pattern="^(console|smtp)$",
+        pattern="^(console|smtp|brevo)$",
     )
+    brevo_api_key: str | None = None
     email_from: str = "TellSpend <no-reply@tellspend.local>"
     smtp_host: str | None = None
     smtp_port: int = 587

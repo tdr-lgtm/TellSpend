@@ -254,7 +254,8 @@ Settings are read from `tellspend/.env` (or environment variables) when the serv
 
 | Variable | Default | Description |
 |---|---|---|
-| `EMAIL_BACKEND` | `console` | `console` prints emails in the server log; `smtp` sends them. |
+| `EMAIL_BACKEND` | `console` | `console` prints emails in the server log; `smtp` sends them; `brevo` sends them through Brevo's API (for hosts that block SMTP). |
+| `BREVO_API_KEY` | *unset* | Brevo API key, used when `EMAIL_BACKEND=brevo`. |
 | `EMAIL_FROM` | `TellSpend <no-reply@tellspend.local>` | Sender. |
 | `SMTP_HOST` / `SMTP_PORT` | *unset* / `587` | SMTP server. |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | *unset* | Login (for Gmail, an App Password). |
