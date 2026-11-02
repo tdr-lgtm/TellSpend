@@ -4,6 +4,8 @@
 
 import axios from "axios";
 
+import { isServerAwake } from "./serverWake";
+
 export function getErrorMessage(
   error: unknown,
   fallback = "Something went wrong. Please try again.",
@@ -12,8 +14,14 @@ export function getErrorMessage(
     return fallback;
   }
 
-  // No response at all: server down, wrong address, or no internet.
+  // No response at all: still waking up, server down, or no internet.
   if (!error.response) {
+    if (!isServerAwake()) {
+      return "The server is still waking up (the free host sleeps when idle). Please try again in a moment.";
+    }
+    if (error.code === "ECONNABORTED") {
+      return "The server took too long to answer. Please try again.";
+    }
     return "Can't reach the server. Check your connection.";
   }
 

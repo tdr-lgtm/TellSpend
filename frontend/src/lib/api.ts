@@ -2,34 +2,78 @@
  * The one HTTP client every API call goes through, plus the auth calls.
  */
 
-import axios from "axios";
+import axios, { type InternalAxiosRequestConfig } from "axios";
 import { todayISO } from "./format";
 import { clearToken, getToken } from "./token";
 import type { MoneyKind } from "./moneyKinds";
+import {
+  WAKE_BUDGET_MS,
+  isServerAwake,
+  markServerAwake,
+  requestFinished,
+  requestStarted,
+} from "./serverWake";
 
 const baseURL =
   import.meta.env.VITE_API_URL ??
   `http://${window.location.hostname}:8000`;
 
+// The free host (Render) sleeps when idle and takes up to about a minute
+// to start again, so a normal request may wait that long the first time.
+export const REQUEST_TIMEOUT_MS = 90_000;
+// The assistant: waking the server, then the model (the server gives the
+// model up to 2 tries of 40 seconds).
+export const ASSISTANT_TIMEOUT_MS = 150_000;
+
 export const api = axios.create({
   baseURL,
-  timeout: 15000,
+  timeout: REQUEST_TIMEOUT_MS,
 });
 
+type WakeConfig = InternalAxiosRequestConfig & { wakeStartedAt?: number };
+
+// What the host answers (or fails with) while the server is still booting.
+function isWakeFailure(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  if (!error.response) return error.code !== "ECONNABORTED" && error.code !== "ERR_CANCELED";
+  return [502, 503, 504].includes(error.response.status);
+}
+
 // Send the saved token with every request.
-api.interceptors.request.use((config) => {
+api.interceptors.request.use((config: WakeConfig) => {
   const token = getToken();
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
+  config.wakeStartedAt ??= Date.now();
+  requestStarted();
+
   return config;
 });
 
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
+  (response) => {
+    requestFinished();
+    markServerAwake();
+    return response;
+  },
+  async (error) => {
+    requestFinished();
+
+    // Until the server has answered once, a failure from the host while it
+    // boots is retried (for up to WAKE_BUDGET_MS) instead of shown.
+    const config = axios.isAxiosError(error) ? (error.config as WakeConfig | undefined) : undefined;
+    if (config && !isServerAwake() && isWakeFailure(error)) {
+      if (Date.now() - (config.wakeStartedAt ?? Date.now()) < WAKE_BUDGET_MS) {
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        return api(config);
+      }
+    } else if (axios.isAxiosError(error) && error.response && !isWakeFailure(error)) {
+      markServerAwake();
+    }
+
     if (axios.isAxiosError(error)) {
       const isLoginAttempt = error.config?.url === "/auth/token";
 
@@ -561,11 +605,11 @@ function normalizeResult(data: Partial<AssistantResult>): AssistantResult {
 }
 
 export async function previewExpenses(text: string): Promise<AssistantResult> {
-  // The model can take a while; allow more than the usual 15 seconds.
+  // The model can take a while (and the server may be waking up too).
   const response = await api.post<Partial<AssistantResult>>(
     "/assistant/preview",
     { text, today: todayISO() },
-    { timeout: 90000 },
+    { timeout: ASSISTANT_TIMEOUT_MS },
   );
   return normalizeResult(response.data);
 }
@@ -589,7 +633,7 @@ export async function clarifyExpenses(
   const response = await api.post<Partial<AssistantResult>>(
     "/assistant/clarify",
     { text, turns, decisions, focus: focus ?? null, today: todayISO() },
-    { timeout: 90000 },
+    { timeout: ASSISTANT_TIMEOUT_MS },
   );
   return normalizeResult(response.data);
 }
