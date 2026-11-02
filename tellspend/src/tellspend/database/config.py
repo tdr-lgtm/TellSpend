@@ -57,6 +57,18 @@ class Settings(BaseSettings):
     # The shortest time between two emails of the same kind to one user.
     email_resend_seconds: int = Field(default=60, ge=0)
 
+    # Wrong-password limits on login, over a sliding window: per email from
+    # one client, and per email from everywhere (guessing spread over many
+    # addresses). When reached, logins for it are refused until the oldest
+    # failure is older than the window.
+    login_max_failures: int = Field(default=5, gt=0)
+    login_max_failures_per_account: int = Field(default=20, gt=0)
+    login_window_minutes: int = Field(default=15, gt=0)
+    # Behind a proxy (Render), the client's address is in X-Forwarded-For;
+    # without this every client looks like the proxy. Only turn on behind
+    # a proxy that sets the header, or clients can pick their own address.
+    trust_proxy_headers: bool = False
+
     llm_model: str | None = None
 
     llm_base_url: str | None = None

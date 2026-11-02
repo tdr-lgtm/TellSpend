@@ -1,6 +1,6 @@
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -33,6 +33,12 @@ from tellspend.services.auth_tokens import (
     sent_recently,
     use_token,
 )
+from tellspend.services.rate_limit import (
+    check_login_allowed,
+    client_address,
+    record_login_failure,
+    record_login_success,
+)
 
 # The same answer for a link that's wrong, used or expired.
 BAD_LINK = "This link is invalid or has expired. Ask for a new one."
@@ -48,6 +54,7 @@ router = APIRouter(
     response_model=Token,
 )
 def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
@@ -68,18 +75,28 @@ def login(
     Raises:
         HTTPException 401 if the email or password is wrong; 403 if the
         email isn't verified yet (only said once the password is right,
-        and a code is sent).
+        and a code is sent); 429 after too many wrong passwords for the
+        email (settings.login_max_failures*), until the window passes.
     """
     email = form_data.username.strip().lower()
+    address = client_address(request)
+
+    # Too many wrong passwords: refused before the password is checked,
+    # so guessing on gives no hint. An unknown email counts the same as a
+    # wrong password, so the limit doesn't show which emails have accounts.
+    check_login_allowed(email, address)
 
     user = db.scalar(select(User).where(User.email == email))
 
     if user is None or not verify_password(form_data.password, user.password_hash):
+        record_login_failure(email, address)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    record_login_success(email, address)
 
     # Right password, email not verified yet: send a fresh code (unless
     # one just went out) and say so; the app shows the code screen.
