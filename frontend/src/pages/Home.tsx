@@ -94,7 +94,9 @@ export default function Home() {
         <Button onClick={addBlank}>+ Add expense</Button>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_auto_1fr] lg:items-start">
+      {/* grid-cols-1 (minmax(0, 1fr)) on phones: an unsized column grows to
+          fit its widest content and pushes the page wider than the screen. */}
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_auto_1fr] lg:items-start">
         {/* Each section has its own error boundary: if one breaks, the
             others keep working. */}
         <div className="min-w-0 lg:col-start-1 lg:row-start-1">
@@ -119,7 +121,7 @@ export default function Home() {
           </ErrorBoundary>
         </div>
 
-        <div className="lg:sticky lg:top-24 lg:col-start-2 lg:row-span-3 lg:row-start-1">
+        <div className="min-w-0 lg:sticky lg:top-24 lg:col-start-2 lg:row-span-3 lg:row-start-1">
           <ErrorBoundary label="People">
             <PeoplePanel />
           </ErrorBoundary>

@@ -79,7 +79,9 @@ export default function ComposerBox({
   return (
     <div>
       <form
-        className="flex items-end gap-2"
+        // Phones: the text box gets the whole first row and the buttons go
+        // under it; from sm up, all on one row.
+        className="flex flex-wrap items-end gap-2 sm:flex-nowrap"
         onSubmit={(event) => {
           event.preventDefault();
           if (canSend) {
@@ -104,7 +106,7 @@ export default function ComposerBox({
           maxLength={maxLength}
           placeholder={placeholder}
           aria-label={ariaLabel}
-          className="block min-h-12 w-full min-w-0 resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-base leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 sm:text-sm"
+          className="block min-h-12 w-full min-w-0 basis-full resize-none sm:basis-auto rounded-xl border border-slate-200 bg-white px-4 py-3 text-base leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 sm:text-sm"
         />
 
         <MicButton listening={listening} onStart={onStartSpeaking} onStop={onStopSpeaking} disabled={isLoading} />
@@ -112,7 +114,7 @@ export default function ComposerBox({
         <button
           type="submit"
           disabled={!canSend}
-          className={`h-12 shrink-0 rounded-xl px-5 text-sm font-medium transition disabled:opacity-40 ${brandActionClass}`}
+          className={`h-12 flex-1 shrink-0 rounded-xl px-5 text-sm sm:flex-none font-medium transition disabled:opacity-40 ${brandActionClass}`}
         >
           {isLoading ? loadingLabel : submitLabel}
         </button>

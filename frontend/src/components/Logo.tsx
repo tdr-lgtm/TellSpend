@@ -9,9 +9,12 @@
 type LogoProps = {
   variant?: "default" | "onBrand";
   size?: "md" | "lg";
+  // Only the mark on very small phones (under 360px wide); the name stays
+  // for screen readers.
+  compact?: boolean;
 };
 
-export default function Logo({ variant = "default", size = "md" }: LogoProps) {
+export default function Logo({ variant = "default", size = "md", compact = false }: LogoProps) {
   const onBrand = variant === "onBrand";
   const bubble = onBrand ? "#C8F169" : "var(--logo-bubble)";
   const mark = onBrand ? "#0F3D2E" : "var(--logo-mark)";
@@ -33,7 +36,7 @@ export default function Logo({ variant = "default", size = "md" }: LogoProps) {
       <span
         className={`font-semibold tracking-tight ${size === "lg" ? "text-lg" : "text-[15px]"} ${
           onBrand ? "text-[#ffffff]" : "text-slate-900"
-        }`}
+        } ${compact ? "max-[359px]:sr-only" : ""}`}
       >
         TellSpend
       </span>
