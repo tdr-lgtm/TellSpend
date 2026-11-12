@@ -115,9 +115,9 @@ export default function SpendingOverview() {
       {summary.isPending && (
         <div role="status" className="mt-5 space-y-3">
           <span className="sr-only">Loading…</span>
-          <span className="block h-3 w-20 animate-pulse rounded bg-slate-100" />
-          <span className="block h-9 w-48 animate-pulse rounded-lg bg-slate-100" />
-          <span className="block h-2 w-full animate-pulse rounded-full bg-slate-100" />
+          <span className="block h-3 w-20 shimmer rounded" />
+          <span className="block h-9 w-48 shimmer rounded-lg" />
+          <span className="block h-2 w-full shimmer rounded-full" />
         </div>
       )}
 

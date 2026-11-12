@@ -1,0 +1,51 @@
+# The whole app on your machine: database, API and web app.
+#   docker compose up --build
+# Web app: http://localhost:5173   API: http://localhost:8000/docs
+#
+# Settings (SECRET_KEY, LLM_*) come from tellspend/.env. The database is
+# the local one below, not the one in .env, and emails are printed in the
+# API's log (`docker compose logs api`) instead of being sent.
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: tellspend
+      POSTGRES_PASSWORD: tellspend
+      POSTGRES_DB: tellspend
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tellspend -d tellspend"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./tellspend
+    env_file:
+      - path: ./tellspend/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://tellspend:tellspend@db:5432/tellspend
+      FRONTEND_URL: http://localhost:5173
+      EMAIL_BACKEND: console
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    # Port 5173, because the API's CORS setting allows localhost:5173.
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+volumes:
+  db-data:

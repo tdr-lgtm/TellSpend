@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#ffffff" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -12,6 +15,22 @@
       rel="stylesheet"
     />
     <title>TellSpend</title>
+    <script>
+      // The saved theme (see src/lib/theme.ts), applied before the page
+      // draws so it never flashes light first.
+      (function () {
+        var choice = "system";
+        try {
+          choice = localStorage.getItem("tellspend-theme") || "system";
+        } catch (e) {}
+        var dark = choice === "dark" ||
+          (choice !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) {
+          document.documentElement.classList.add("dark");
+          document.querySelector('meta[name="theme-color"]').setAttribute("content", "#0d1016");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

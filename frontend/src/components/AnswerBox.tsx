@@ -13,6 +13,7 @@ import { useState } from "react";
 import { useClarify } from "../hooks/useAssistant";
 import type { AssistantResult, ClarificationTurn, Decision, DraftChoice } from "../lib/api";
 import { getErrorMessage } from "../lib/errors";
+import { brandActionClass } from "../lib/styles";
 
 // What a card was read from, the questions answered about it so far, and
 // the choices picked.
@@ -109,7 +110,7 @@ export default function AnswerBox({ thread, questions, choices, onAnswered, disa
         <button
           type="submit"
           disabled={!canSend}
-          className="h-9 shrink-0 rounded-lg bg-slate-900 px-3 text-xs font-medium text-white transition hover:bg-slate-800 disabled:opacity-40"
+          className={`h-9 shrink-0 rounded-lg px-3 text-xs font-medium transition disabled:opacity-40 ${brandActionClass}`}
         >
           {clarify.isPending ? "Reading…" : "Answer"}
         </button>

@@ -131,6 +131,41 @@ class AuthToken(Base):
     )
 
 
+class RateEvent(Base):
+    """
+    One thing that's limited, when it happened: an assistant read, a wrong
+    password, a sign-up, a password-reset request... Kept in the database,
+    not the server's memory, so a restart (Render restarts the free plan
+    often) doesn't hand out fresh limits. Rows older than a day are
+    deleted as new ones come in (see services/rate_limit).
+    """
+
+    __tablename__ = "rate_events"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+    )
+
+    # What's counted: "assistant", "login_fail", "signup", "forgot"...
+    bucket: Mapped[str] = mapped_column(
+        String(32),
+    )
+
+    # Whose it is: a user id, an email, a client address, or a pair.
+    key: Mapped[str] = mapped_column(
+        String(400),
+    )
+
+    at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+    )
+
+    __table_args__ = (
+        Index("ix_rate_events_bucket_key_at", "bucket", "key", "at"),
+        Index("ix_rate_events_at", "at"),
+    )
+
+
 class Expense(Base):
     # One bill or purchase recorded by a user.
 

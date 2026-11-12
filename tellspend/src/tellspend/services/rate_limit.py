@@ -1,73 +1,99 @@
 """
-How often one user may ask the assistant: each read calls a paid model,
-so a runaway client (or a loop of retries) mustn't spend the budget.
-Counted in this process's memory, per user, over the last minute and
-the last day (settings.assistant_requests_per_minute / _per_day).
+Rate limits, counted in the database (the rate_events table), so a server
+restart doesn't hand out fresh limits:
+
+    assistant      each assistant read calls a paid model: per user, per
+                   minute and per day (settings.assistant_requests_*)
+    login_fail     wrong passwords, per (email, client) and per email, over
+                   settings.login_window_minutes (a locked account stays
+                   locked through a restart)
+    signup /       per client address, per hour (settings.*_per_hour):
+    forgot /       stops a script from flooding inboxes with codes and
+    resend         links, or checking thousands of emails for accounts
+
+Each limit counts rows newer than its window; rows older than a day are
+deleted as new ones come in. Every function takes the request's database
+session and commits what it records (a refused request still counts).
 """
 
-import threading
+import datetime as dt
 import time
-from collections import defaultdict, deque
 
 from fastapi import HTTPException, status
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
 
 from tellspend.database.config import settings
+from tellspend.database.models import RateEvent
 
 MINUTE = 60
-DAY = 24 * 60 * 60
-
-_lock = threading.Lock()
-_calls: dict[int, deque[float]] = defaultdict(deque)
+HOUR = 60 * MINUTE
+DAY = 24 * HOUR
 
 
-def check_assistant_limit(user_id: int, now: float | None = None) -> None:
+def _at(now: float | None) -> dt.datetime:
+    return dt.datetime.fromtimestamp(time.time() if now is None else now, dt.timezone.utc)
+
+
+def _count(db: Session, bucket: str, key: str, since: dt.datetime) -> int:
+    return db.scalar(
+        select(func.count()).select_from(RateEvent)
+        .where(RateEvent.bucket == bucket, RateEvent.key == key, RateEvent.at > since)
+    ) or 0
+
+
+def _oldest_recent(db: Session, bucket: str, key: str, since: dt.datetime, nth_newest: int) -> dt.datetime | None:
+    """The time of the nth newest event in the window (1 = newest)."""
+    return db.scalar(
+        select(RateEvent.at)
+        .where(RateEvent.bucket == bucket, RateEvent.key == key, RateEvent.at > since)
+        .order_by(RateEvent.at.desc())
+        .offset(nth_newest - 1)
+        .limit(1)
+    )
+
+
+def _record(db: Session, bucket: str, keys: list[str], at: dt.datetime) -> None:
+    for key in keys:
+        db.add(RateEvent(bucket=bucket, key=key[:400], at=at))
+    # Nothing is limited over more than a day: older rows can go.
+    db.execute(delete(RateEvent).where(RateEvent.at < at - dt.timedelta(seconds=DAY)))
+    db.commit()
+
+
+def _refuse(detail: str, wait: float | None = None) -> HTTPException:
+    headers = {"Retry-After": str(max(1, int(wait + 0.999)))} if wait is not None else None
+    return HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=detail, headers=headers)
+
+
+# ---------- the assistant ----------
+
+def check_assistant_limit(db: Session, user_id: int, now: float | None = None) -> None:
     """
     Explanation:
         Count one assistant read for the user, or refuse it when they've
-        reached a limit. Calls older than a day are forgotten.
+        reached a limit.
 
     Parameters:
+        db: The request's database session.
         user_id: Who is asking.
         now: The time (for tests); the current time when left out.
 
     Raises:
         HTTPException 429 when the per-minute or per-day limit is reached.
     """
-    now = time.time() if now is None else now
+    at = _at(now)
+    key = str(user_id)
 
-    with _lock:
-        calls = _calls[user_id]
-        while calls and calls[0] <= now - DAY:
-            calls.popleft()
+    if _count(db, "assistant", key, at - dt.timedelta(seconds=MINUTE)) >= settings.assistant_requests_per_minute:
+        raise _refuse("That's a lot of requests in a minute. Wait a moment and try again.")
+    if _count(db, "assistant", key, at - dt.timedelta(seconds=DAY)) >= settings.assistant_requests_per_day:
+        raise _refuse("You've reached today's limit for the assistant. You can still add expenses by hand.")
 
-        last_minute = sum(1 for at in calls if at > now - MINUTE)
-        if last_minute >= settings.assistant_requests_per_minute:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="That's a lot of requests in a minute. Wait a moment and try again.",
-            )
-        if len(calls) >= settings.assistant_requests_per_day:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="You've reached today's limit for the assistant. You can still add expenses by hand.",
-            )
-
-        calls.append(now)
-
-
-def reset() -> None:
-    """Forget every count (for tests)."""
-    with _lock:
-        _calls.clear()
+    _record(db, "assistant", [key], at)
 
 
 # ---------- wrong passwords on login ----------
-# Failed logins, per (email, client) and per email, over the last
-# settings.login_window_minutes. Counted in this process's memory like the
-# assistant limit: a restart forgets them, which only ever unlocks early.
-
-_failures: dict[tuple, deque[float]] = defaultdict(deque)
-
 
 def client_address(request) -> str:
     """The client's address: from X-Forwarded-For only behind a trusted proxy."""
@@ -79,15 +105,14 @@ def client_address(request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _recent(key: tuple, now: float) -> deque[float]:
-    window = settings.login_window_minutes * MINUTE
-    times = _failures[key]
-    while times and times[0] <= now - window:
-        times.popleft()
-    return times
+def _login_keys(email: str, address: str) -> list[tuple[str, int]]:
+    return [
+        (f"pair:{email}|{address}", settings.login_max_failures),
+        (f"email:{email}", settings.login_max_failures_per_account),
+    ]
 
 
-def check_login_allowed(email: str, address: str, now: float | None = None) -> None:
+def check_login_allowed(db: Session, email: str, address: str, now: float | None = None) -> None:
     """
     Explanation:
         Refuse a login attempt while there have been too many wrong
@@ -96,6 +121,7 @@ def check_login_allowed(email: str, address: str, now: float | None = None) -> N
         whether a guess was right.
 
     Parameters:
+        db: The request's database session.
         email: The email being signed in to (normalized).
         address: The client's address.
         now: The time (for tests); the current time when left out.
@@ -103,52 +129,71 @@ def check_login_allowed(email: str, address: str, now: float | None = None) -> N
     Raises:
         HTTPException 429, with Retry-After, while locked.
     """
-    now = time.time() if now is None else now
-    window = settings.login_window_minutes * MINUTE
+    at = _at(now)
+    window = dt.timedelta(minutes=settings.login_window_minutes)
 
-    with _lock:
-        locked_until = []
-        for key, limit in (
-            (("pair", email, address), settings.login_max_failures),
-            (("email", email), settings.login_max_failures_per_account),
-        ):
-            times = _recent(key, now)
-            if len(times) >= limit:
-                # Unlocks when enough failures have aged out of the window.
-                locked_until.append(times[len(times) - limit] + window)
+    locked_until: list[dt.datetime] = []
+    for key, limit in _login_keys(email, address):
+        if _count(db, "login_fail", key, at - window) >= limit:
+            # Unlocks when enough failures have aged out of the window.
+            oldest = _oldest_recent(db, "login_fail", key, at - window, limit)
+            if oldest is not None:
+                locked_until.append(oldest + window)
 
     if locked_until:
-        wait = max(1, int(max(locked_until) - now + 0.999))
-        minutes = max(1, -(-wait // MINUTE))
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=(
-                "Too many wrong passwords for this account. "
-                f"Try again in {minutes} minute{'s' if minutes != 1 else ''}, or reset your password."
-            ),
-            headers={"Retry-After": str(wait)},
+        wait = (max(locked_until) - at).total_seconds()
+        minutes = max(1, -(-int(wait + 0.999) // MINUTE))
+        raise _refuse(
+            "Too many wrong passwords for this account. "
+            f"Try again in {minutes} minute{'s' if minutes != 1 else ''}, or reset your password.",
+            wait,
         )
 
 
-def record_login_failure(email: str, address: str, now: float | None = None) -> None:
+def record_login_failure(db: Session, email: str, address: str, now: float | None = None) -> None:
     """Count one wrong password (or unknown email) for this email and client."""
-    now = time.time() if now is None else now
-    with _lock:
-        for key in (("pair", email, address), ("email", email)):
-            _recent(key, now).append(now)
-        # Forget keys nobody has failed on lately, so memory stays small.
-        if len(_failures) > 10_000:
-            for key in [k for k, v in _failures.items() if not v or v[-1] <= now - DAY]:
-                del _failures[key]
+    _record(db, "login_fail", [key for key, _ in _login_keys(email, address)], _at(now))
 
 
-def record_login_success(email: str, address: str) -> None:
+def record_login_success(db: Session, email: str, address: str) -> None:
     """The right password: this client's failures for the email are forgiven."""
-    with _lock:
-        _failures.pop(("pair", email, address), None)
+    db.execute(delete(RateEvent).where(RateEvent.bucket == "login_fail", RateEvent.key == f"pair:{email}|{address}"))
+    db.commit()
 
 
-def reset_login_failures() -> None:
-    """Forget every failed login (for tests)."""
-    with _lock:
-        _failures.clear()
+# ---------- emails sent on request: sign-up, reset link, new code ----------
+
+_EMAIL_LIMITS = {
+    "signup": ("signups_per_hour", "Too many sign-ups from this device. Try again in an hour."),
+    "forgot": ("reset_requests_per_hour", "Too many reset requests from this device. Try again later."),
+    "resend": ("code_requests_per_hour", "Too many code requests from this device. Try again later."),
+}
+
+
+def check_email_request(db: Session, action: str, address: str, now: float | None = None) -> None:
+    """
+    Explanation:
+        Count one sign-up, reset request or new-code request from this
+        client address, or refuse it once the hourly limit is reached.
+        (The per-email "one a minute" limit is separate: auth_tokens.)
+
+    Parameters:
+        db: The request's database session.
+        action: "signup", "forgot" or "resend".
+        address: The client's address.
+        now: The time (for tests); the current time when left out.
+
+    Raises:
+        HTTPException 429, with Retry-After, at the limit.
+    """
+    setting, message = _EMAIL_LIMITS[action]
+    limit = getattr(settings, setting)
+    at = _at(now)
+    since = at - dt.timedelta(seconds=HOUR)
+
+    if _count(db, action, address, since) >= limit:
+        oldest = _oldest_recent(db, action, address, since, limit)
+        wait = (oldest + dt.timedelta(seconds=HOUR) - at).total_seconds() if oldest else HOUR
+        raise _refuse(message, wait)
+
+    _record(db, action, [address], at)

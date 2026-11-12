@@ -4,7 +4,9 @@
 
 import type { ButtonHTMLAttributes } from "react";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+import { brandActionClass } from "../lib/styles";
+
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "brand";
 type Size = "sm" | "md";
 
 type ButtonProps = {
@@ -13,10 +15,12 @@ type ButtonProps = {
 } & ButtonHTMLAttributes<HTMLButtonElement>;
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-slate-900 text-white shadow-sm hover:bg-slate-800",
+  primary: `${brandActionClass} shadow-sm`,
   secondary: "bg-white text-slate-700 ring-1 ring-inset ring-slate-200 hover:bg-slate-50",
   ghost: "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
   danger: "text-rose-600 hover:bg-rose-50",
+  // The same as primary (kept as a name the sign-in pages use).
+  brand: `${brandActionClass} shadow-sm`,
 };
 
 const SIZES: Record<Size, string> = {

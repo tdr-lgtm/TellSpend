@@ -24,32 +24,38 @@ from tellspend.database.config import settings
 logger = logging.getLogger("tellspend.mail")
 
 
-def send_email(to: str, subject: str, body: str) -> bool:
+def send_email(to: str, subject: str, body: str, html: str | None = None) -> bool:
     """
     Explanation:
-        Send one plain-text email with the configured backend.
+        Send one email with the configured backend: plain text, plus an
+        HTML version when given (mail apps show the HTML and fall back to
+        the text).
 
     Parameters:
         to: The recipient's address.
         subject: The subject line.
         body: The plain-text body.
+        html: The HTML body, if any.
 
     Returns:
         True if it was sent (or printed), False if sending failed.
     """
     if settings.email_backend == "console":
-        # WARNING so it shows with uvicorn's default log level.
+        # WARNING so it shows with uvicorn's default log level. (The text
+        # version only: it has the same code or link.)
         logger.warning("Email to %s\nSubject: %s\n\n%s", to, subject, body)
         return True
 
     if settings.email_backend == "brevo":
-        return _send_with_brevo(to, subject, body)
+        return _send_with_brevo(to, subject, body, html)
 
     message = EmailMessage()
     message["From"] = settings.email_from
     message["To"] = to
     message["Subject"] = subject
     message.set_content(body)
+    if html:
+        message.add_alternative(html, subtype="html")
 
     try:
         with smtplib.SMTP(settings.smtp_host or "", settings.smtp_port, timeout=15) as smtp:
@@ -68,8 +74,8 @@ def send_email(to: str, subject: str, body: str) -> bool:
 BREVO_URL = "https://api.brevo.com/v3/smtp/email"
 
 
-def _send_with_brevo(to: str, subject: str, body: str) -> bool:
-    """Send one plain-text email through Brevo's API; False if it failed."""
+def _send_with_brevo(to: str, subject: str, body: str, html: str | None = None) -> bool:
+    """Send one email through Brevo's API; False if it failed."""
     name, address = parseaddr(settings.email_from)
     payload = {
         "sender": {"name": name or "TellSpend", "email": address},
@@ -77,6 +83,8 @@ def _send_with_brevo(to: str, subject: str, body: str) -> bool:
         "subject": subject,
         "textContent": body,
     }
+    if html:
+        payload["htmlContent"] = html
     request = urllib.request.Request(
         BREVO_URL,
         data=json.dumps(payload).encode(),

@@ -13,6 +13,8 @@ from tellspend.ingestion.extractor import (
     KEY_REJECTED,
     NOT_SET_UP,
     OUT_OF_CREDITS,
+    PAUSED,
+    TOO_SLOW,
     UNAVAILABLE,
     AssistantUnavailable,
     user_message_for,
@@ -522,16 +524,31 @@ def test_preview_needs_login_and_text(client, make_user, fake_model):
     assert client.post("/assistant/preview", json={"text": "Lunch 350"}).status_code == 401
     assert preview(client, make_user(), "   ").status_code == 422
 
-def test_unavailable_model_is_a_503_with_a_plain_message(client, make_user, monkeypatch):
+@pytest.mark.parametrize("reason", [NOT_SET_UP, OUT_OF_CREDITS, KEY_REJECTED])
+def test_a_problem_with_the_servers_ai_account_is_never_shown_to_users(client, make_user, monkeypatch, reason):
     def broken(text, reference_date, user_name, turns=()):
-        raise AssistantUnavailable(NOT_SET_UP)
+        raise AssistantUnavailable(reason)
 
     monkeypatch.setattr(assistant, "extract", broken)
 
     response = preview(client, make_user(), "Lunch 350")
 
     assert response.status_code == 503
-    assert response.json()["detail"] == NOT_SET_UP
+    detail = response.json()["detail"]
+    assert detail == PAUSED
+    for word in ("credit", "API key", ".env", "provider", "spending"):
+        assert word not in detail
+
+
+def test_a_passing_problem_keeps_its_try_again_message(client, make_user, monkeypatch):
+    def slow(text, reference_date, user_name, turns=()):
+        raise AssistantUnavailable(TOO_SLOW)
+
+    monkeypatch.setattr(assistant, "extract", slow)
+
+    response = preview(client, make_user(), "Lunch 350")
+
+    assert response.status_code == 503 and response.json()["detail"] == TOO_SLOW
 
 class ProviderError(Exception):
     """Stands in for an HTTP error from the AI provider's client library."""

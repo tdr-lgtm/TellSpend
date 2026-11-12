@@ -119,7 +119,7 @@ def test_key_or_credit_problems_are_not_retried(model, status, message):
     with pytest.raises(AssistantUnavailable) as caught:
         read()
 
-    assert caught.value.user_message == message
+    assert caught.value.reason == message
     assert fake.calls == 1
 
 
@@ -129,7 +129,7 @@ def test_every_attempt_failing_gives_a_plain_message(model):
     with pytest.raises(AssistantUnavailable) as caught:
         read()
 
-    assert caught.value.user_message == UNAVAILABLE
+    assert caught.value.reason == UNAVAILABLE
     assert fake.calls == 2
 
 
@@ -139,7 +139,7 @@ def test_timing_out_every_time_says_it_was_slow(model):
     with pytest.raises(AssistantUnavailable) as caught:
         read()
 
-    assert caught.value.user_message == TOO_SLOW
+    assert caught.value.reason == TOO_SLOW
 
 
 def test_attempts_setting_is_respected(model, monkeypatch):

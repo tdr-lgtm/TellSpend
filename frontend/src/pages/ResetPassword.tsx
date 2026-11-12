@@ -35,7 +35,7 @@ export default function ResetPassword() {
   });
 
   const footer = (
-    <Link to="/login" className="font-medium text-slate-900 hover:underline">
+    <Link to="/login" className="font-semibold text-emerald-700 hover:underline">
       Back to sign in
     </Link>
   );
@@ -45,7 +45,7 @@ export default function ResetPassword() {
       <AuthLayout title="Reset your password" subtitle="This link is missing its code." footer={footer}>
         <p className="text-sm text-slate-700">
           Open the link from the email again, or{" "}
-          <Link to="/forgot-password" className="font-medium text-slate-900 hover:underline">
+          <Link to="/forgot-password" className="font-semibold text-emerald-700 hover:underline">
             ask for a new one
           </Link>
           .
@@ -61,7 +61,7 @@ export default function ResetPassword() {
           <p role="status" className="text-sm text-slate-700">
             {reset.data}
           </p>
-          <Button className="w-full" onClick={() => navigate("/login")}>
+          <Button variant="brand" className="w-full" onClick={() => navigate("/login")}>
             Sign in
           </Button>
         </div>
@@ -103,13 +103,13 @@ export default function ResetPassword() {
 
           {reset.isError && (
             <p className="text-sm text-slate-500">
-              <Link to="/forgot-password" className="font-medium text-slate-900 hover:underline">
+              <Link to="/forgot-password" className="font-semibold text-emerald-700 hover:underline">
                 Ask for a new link
               </Link>
             </p>
           )}
 
-          <Button type="submit" disabled={reset.isPending} className="mt-1 w-full">
+          <Button variant="brand" type="submit" disabled={reset.isPending} className="mt-1 w-full">
             {reset.isPending ? "Saving…" : "Change password"}
           </Button>
         </form>

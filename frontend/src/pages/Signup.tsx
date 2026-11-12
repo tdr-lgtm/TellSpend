@@ -43,7 +43,7 @@ export default function Signup() {
       footer={
         <>
           Already have an account?{" "}
-          <Link to="/login" className="font-medium text-slate-900 hover:underline">
+          <Link to="/login" className="font-semibold text-emerald-700 hover:underline">
             Sign in
           </Link>
         </>
@@ -99,6 +99,7 @@ export default function Signup() {
         )}
 
         <Button
+          variant="brand"
           type="submit"
           disabled={signupMutation.isPending}
           className="mt-1 w-full"

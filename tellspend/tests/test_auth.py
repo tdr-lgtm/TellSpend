@@ -35,8 +35,11 @@ def test_signup_creates_user_without_exposing_password(client):
 def test_signup_defaults_currency_to_inr(client):
     assert signup(client).json()["default_currency"] == "INR"
 
-def test_signup_rejects_duplicate_email_in_any_case(client):
+def test_signup_rejects_duplicate_email_in_any_case(client, db):
+    # (Taken once verified: an unverified email can be signed up again, see
+    # test_account_emails.)
     signup(client, email="xyz@example.com")
+    mark_verified(db, "xyz@example.com")
 
     response = signup(client, email="XYZ@example.com")
 

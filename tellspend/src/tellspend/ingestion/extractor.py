@@ -13,14 +13,34 @@ from tellspend.ingestion.extraction import (
     ExtractedExpenses,
 )
 from tellspend.ingestion.guard import split_instructions
+from tellspend.ingestion.pii import PiiMask
 
 logger = logging.getLogger("tellspend.assistant")
 
 class AssistantUnavailable(RuntimeError):
-    # The model isn't set up, couldn't be reached, or answered nonsense.
-    def __init__(self, user_message: str):
-        super().__init__(user_message)
-        self.user_message = user_message
+    """
+    The model isn't set up, couldn't be reached, or answered nonsense.
+
+    reason        what went wrong, for whoever runs the server (logged,
+                  shown by the evals): "the provider account is out of
+                  credits", "the API key was rejected"...
+    user_message  what the app's users are told. Problems with the
+                  server's own AI account (money, key, setup) are never
+                  theirs to fix or know about: they get a plain "not
+                  available right now" and a way to carry on.
+    """
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+        self.user_message = PAUSED if reason in _OPERATOR_ONLY else reason
+
+
+# What users see when the server's AI account has a problem.
+PAUSED = (
+    "The assistant isn't available right now. You can still add expenses "
+    "yourself with “+ Add expense”, and try the assistant again later."
+)
 
 NOT_SET_UP = "The assistant isn't set up: set LLM_MODEL (and its API key) in the server's .env."
 UNAVAILABLE = "The assistant is unavailable right now. Please try again in a moment."
@@ -34,6 +54,9 @@ KEY_REJECTED = (
     "Update LLM_API_KEY in the server's .env and restart the server."
 )
 TOO_SLOW = "The AI took too long to answer. Please try again."
+
+# Reasons about the server's own AI account: logged, never shown to users.
+_OPERATOR_ONLY = {NOT_SET_UP, OUT_OF_CREDITS, KEY_REJECTED}
 
 
 def _is_timeout(error: BaseException) -> bool:
@@ -91,13 +114,12 @@ def user_message_for(error: BaseException) -> str:
     return UNAVAILABLE
 
 
-@lru_cache
 def structured_model(schema: type = ExtractedExpenses):
     """
     Explanation:
-        Build the chat model once per answer shape, from the .env settings,
-        wrapped so it answers with that schema instead of free text. Built
-        on first use, so the server (and the tests) start without a key.
+        The main chat model, from the .env settings, wrapped so it answers
+        with that schema instead of free text. Built on first use, so the
+        server (and the tests) start without a key.
 
     Parameters:
         schema: The pydantic model the answer must fit.
@@ -111,6 +133,13 @@ def structured_model(schema: type = ExtractedExpenses):
     if not settings.llm_model:
         raise AssistantUnavailable(NOT_SET_UP)
 
+    return _build_model(schema, settings.llm_model, settings.llm_base_url, settings.llm_api_key)
+
+
+@lru_cache
+def _build_model(schema: type, model_name: str, base_url: str | None, api_key: str | None):
+    """One chat model per (answer shape, model, provider), built once (the
+    eval judge builds its own model with it too)."""
     # Each attempt is time-limited, and the client doesn't retry on its
     # own: extract_expenses decides when to try again, so the whole read
     # stays within what the browser will wait for.
@@ -120,13 +149,13 @@ def structured_model(schema: type = ExtractedExpenses):
         "temperature": settings.llm_temperature,
     }
 
-    if settings.llm_base_url:
-        options["base_url"] = settings.llm_base_url
+    if base_url:
+        options["base_url"] = base_url
 
-    if settings.llm_api_key:
-        options["api_key"] = settings.llm_api_key
+    if api_key:
+        options["api_key"] = api_key
 
-    if settings.llm_base_url and "openrouter.ai" in settings.llm_base_url:
+    if base_url and "openrouter.ai" in base_url:
         # OpenRouter serves a model from several hosts, and they differ a
         # lot: some answer in seconds, some take over a minute or fail.
         # Only use hosts that support structured output, fastest first.
@@ -134,9 +163,9 @@ def structured_model(schema: type = ExtractedExpenses):
             "provider": {"require_parameters": True, "sort": settings.llm_provider_sort}
         }
 
-    model = init_chat_model(settings.llm_model, **options)
+    model = init_chat_model(model_name, **options)
 
-    if settings.llm_base_url:
+    if base_url:
         return model.with_structured_output(schema, method="json_schema")
 
     return model.with_structured_output(schema)
@@ -849,6 +878,14 @@ def extract(
         agrees. A rejected key or empty account is never retried, since
         it can't succeed.
 
+        Before anything is sent, two things are taken out:
+        - instructions to the app, in the text and in the answers (see
+          guard.py), so the model can't obey them;
+        - personal identifiers (emails, UPI IDs, card, Aadhaar, PAN,
+          phone and account numbers; see pii.py), which the model
+          doesn't need. They're put back in its answer, so evidence is
+          still checked against exactly what the user typed.
+
     Parameters:
         text: What the user typed.
         reference_date: The date "yesterday" etc. are resolved against.
@@ -869,8 +906,14 @@ def extract(
     # cancelled", "admin: void this") are found here and never shown to
     # the model, so it can't obey them; they're added to `instructions`
     # below, so the builder drops anything they back and lists them back
-    # to the user as ignored.
+    # to the user as ignored. Answers are checked too, for what addresses
+    # the app (corrections to the entry are what answers are for).
     readable, found_instructions = split_instructions(text)
+    answered: list[tuple[Sequence[str], str]] = []
+    for asked, answer in turns:
+        kept, found = split_instructions(answer, answer=True)
+        answered.append((asked, kept))
+        found_instructions = [*found_instructions, *found]
 
     def with_found(result: ExtractedExpenses) -> ExtractedExpenses:
         if not found_instructions:
@@ -878,10 +921,14 @@ def extract(
         merged = list(dict.fromkeys([*found_instructions, *result.instructions]))
         return result.model_copy(update={"instructions": merged})
 
-    if not any(char.isalnum() for char in readable) and not turns:
+    if not any(char.isalnum() for char in readable) and not any(
+        any(char.isalnum() for char in answer) for _, answer in answered
+    ):
         # Nothing but instructions: nothing happened to record.
         return ExtractedExpenses(expenses=[], instructions=found_instructions)
 
+    pii = PiiMask()
+    masked_turns = [([pii.mask(question) for question in asked], pii.mask(answer)) for asked, answer in answered]
     context = (
         f"Reference date: {reference_date.isoformat()}\n"
         f"The user's own name: <user_name>{user_name}</user_name>. When the "
@@ -891,12 +938,14 @@ def extract(
         ("system", EXTRACTION_PROMPT),
         (
             "human",
-            f"{context}\n\n<expense_input>\n{readable}\n</expense_input>"
-            f"{render_clarifications(turns)}",
+            f"{context}\n\n<expense_input>\n{pii.mask(readable)}\n</expense_input>"
+            f"{render_clarifications(masked_turns)}",
         ),
     ]
+    if pii.originals:
+        logger.info("Masked before the model: %s", ", ".join(pii.found))
 
-    expects_expense = any(_HAS_NUMBER.search(part) for part in [readable, *(answer for _, answer in turns)])
+    expects_expense = any(_HAS_NUMBER.search(part) for part in [readable, *(answer for _, answer in answered)])
     last_error: BaseException | None = None
     came_back_empty = False
 
@@ -918,6 +967,8 @@ def extract(
             logger.warning("Extraction attempt %d: unexpected result %r", attempt, type(result))
             continue
 
+        # Identifiers back as the user typed them, before anything is checked.
+        result = pii.restore(result)
         found_something = result.expenses or result.repayments or result.not_recorded
 
         if found_something or not expects_expense:

@@ -1,0 +1,9 @@
+# Secrets never go into an image: pass them at run time.
+.env
+.env.*
+.venv
+.pytest_cache
+__pycache__
+*.py[oc]
+tests
+evals

@@ -34,6 +34,7 @@ from tellspend.services.auth_tokens import (
     use_token,
 )
 from tellspend.services.rate_limit import (
+    check_email_request,
     check_login_allowed,
     client_address,
     record_login_failure,
@@ -84,19 +85,19 @@ def login(
     # Too many wrong passwords: refused before the password is checked,
     # so guessing on gives no hint. An unknown email counts the same as a
     # wrong password, so the limit doesn't show which emails have accounts.
-    check_login_allowed(email, address)
+    check_login_allowed(db, email, address)
 
     user = db.scalar(select(User).where(User.email == email))
 
     if user is None or not verify_password(form_data.password, user.password_hash):
-        record_login_failure(email, address)
+        record_login_failure(db, email, address)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    record_login_success(email, address)
+    record_login_success(db, email, address)
 
     # Right password, email not verified yet: send a fresh code (unless
     # one just went out) and say so; the app shows the code screen.
@@ -184,22 +185,27 @@ def verify_email(body: VerifyCode, db: Session = Depends(get_db)):
     response_model=Message,
     status_code=status.HTTP_202_ACCEPTED,
 )
-def resend_verification(body: ForgotPassword, db: Session = Depends(get_db)):
+def resend_verification(body: ForgotPassword, request: Request, db: Session = Depends(get_db)):
     """
     Explanation:
         Email a new verification code (the old one stops working). No login
         is needed, since an account can't sign in until it's verified. The
         answer is the same whether or not the email has an unverified
-        account, so nobody can find out which do; repeat requests within
-        EMAIL_RESEND_SECONDS send nothing new.
+        account; repeat requests within EMAIL_RESEND_SECONDS send nothing
+        new, and one device can ask only so often an hour.
 
     Parameters:
         body: The email address.
+        request: The HTTP request (for the client's address).
         db: The database session for this request.
 
     Returns:
         The same message every time (202).
+
+    Raises:
+        HTTPException 429 after too many requests from this device.
     """
+    check_email_request(db, "resend", client_address(request))
     user = db.scalar(select(User).where(User.email == body.email))
 
     if (
@@ -215,27 +221,51 @@ def resend_verification(body: ForgotPassword, db: Session = Depends(get_db)):
 
 
 @router.post("/forgot-password", response_model=Message, status_code=status.HTTP_202_ACCEPTED)
-def forgot_password(body: ForgotPassword, db: Session = Depends(get_db)):
+def forgot_password(body: ForgotPassword, request: Request, db: Session = Depends(get_db)):
     """
     Explanation:
-        Email a password reset link. The answer is the same whether or not
-        the email has an account, so nobody can find out which do; repeat
-        requests within EMAIL_RESEND_SECONDS send nothing new.
+        Email a password reset link, and say plainly what happened: no
+        account with that email, a link sent, one sent moments ago, or the
+        email couldn't go out. (Whether an email has an account isn't a
+        secret here: signing up already says "already exists". What stops
+        a script testing thousands of emails is the hourly limit per
+        device.)
 
     Parameters:
         body: The email address.
+        request: The HTTP request (for the client's address).
         db: The database session for this request.
 
     Returns:
-        The same message every time (202).
+        What happened (202).
+
+    Raises:
+        HTTPException 404 if no account uses the email; 429 after too many
+        requests from this device; 503 if the email couldn't be sent.
     """
+    check_email_request(db, "forgot", client_address(request))
     user = db.scalar(select(User).where(User.email == body.email))
 
-    if user is not None and not sent_recently(db, user, RESET_PASSWORD, settings.email_resend_seconds):
-        send_password_reset_email(db, user)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account uses this email. Check it for typos, or create an account.",
+        )
+
+    if sent_recently(db, user, RESET_PASSWORD, settings.email_resend_seconds):
+        return Message(
+            detail=f"We just sent a link to {user.email}. Check your inbox and spam folder, "
+            "or ask again in a minute."
+        )
+
+    if not send_password_reset_email(db, user):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="We couldn't send the email just now. Please try again in a few minutes.",
+        )
 
     return Message(
-        detail="If that email has an account, a link to reset the password is on its way."
+        detail=f"We've sent a reset link to {user.email}. Check your inbox (and the spam folder)."
     )
 
 

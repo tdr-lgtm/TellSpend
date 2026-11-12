@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     login_max_failures: int = Field(default=5, gt=0)
     login_max_failures_per_account: int = Field(default=20, gt=0)
     login_window_minutes: int = Field(default=15, gt=0)
+    # Per client address, per hour: sign-ups, password-reset requests and
+    # new-code requests. Each sends an email, so a script mustn't be able
+    # to flood inboxes or test thousands of emails for accounts.
+    signups_per_hour: int = Field(default=5, gt=0)
+    # A sign-up never verified is removed after this many hours.
+    unverified_account_hours: int = Field(default=24, gt=0)
+    reset_requests_per_hour: int = Field(default=10, gt=0)
+    code_requests_per_hour: int = Field(default=10, gt=0)
     # Behind a proxy (Render), the client's address is in X-Forwarded-For;
     # without this every client looks like the proxy. Only turn on behind
     # a proxy that sets the header, or clients can pick their own address.
@@ -77,7 +85,8 @@ class Settings(BaseSettings):
 
     # How long one model call may take before it's abandoned and, if
     # attempts remain, tried again. Attempts x timeout must stay below
-    # what the browser waits for a read (90 seconds).
+    # what the browser waits for a read (ASSISTANT_TIMEOUT_MS in the
+    # frontend: 150 seconds).
     llm_timeout_seconds: float = Field(
         default=40,
         gt=0,
@@ -101,6 +110,11 @@ class Settings(BaseSettings):
     # OpenRouter only: which of a model's hosts to prefer. "throughput"
     # is the fastest; "price" the cheapest; "latency" the quickest start.
     llm_provider_sort: str = "throughput"
+
+    # Evals only (evals/judge.py): the model that grades the assistant's
+    # answers. Best a different model from LLM_MODEL, so it doesn't grade
+    # its own mistakes as right. Unset: LLM_MODEL is used.
+    eval_judge_model: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

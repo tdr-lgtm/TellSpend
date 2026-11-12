@@ -651,7 +651,11 @@ class Builder:
         ]
         if len(names) == len(refs):
             listed = ", ".join(names[:-1]) + f" and {names[-1]}"
-            self.notes.append(f"No amounts were given for {what}, so it's split evenly between {listed}.")
+            # The price may well be known ("pasta 450 shared by all
+            # three"); what wasn't said is each person's part of it.
+            self.notes.append(
+                f"You didn't say each person's part of {what}, so it's split evenly between {listed}."
+            )
 
     # people
     def match_contact(self, entity: Entity) -> Counterparty | str | None:

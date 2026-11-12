@@ -66,26 +66,26 @@ def test_one_locked_account_doesnt_lock_another(client, user, db):
     assert login(client, email="other@example.com").status_code == 200
 
 
-def test_the_lock_lifts_when_the_window_passes():
+def test_the_lock_lifts_when_the_window_passes(db):
     now = 1_000_000.0
     for i in range(settings.login_max_failures):
-        rate_limit.record_login_failure(EMAIL, "1.2.3.4", now + i)
+        rate_limit.record_login_failure(db, EMAIL, "1.2.3.4", now + i)
 
     with pytest.raises(Exception) as locked:
-        rate_limit.check_login_allowed(EMAIL, "1.2.3.4", now + 10)
+        rate_limit.check_login_allowed(db, EMAIL, "1.2.3.4", now + 10)
     assert locked.value.status_code == 429
 
     # The oldest failure ages out of the window: one more try is allowed.
-    rate_limit.check_login_allowed(EMAIL, "1.2.3.4", now + settings.login_window_minutes * 60 + 1)
+    rate_limit.check_login_allowed(db, EMAIL, "1.2.3.4", now + settings.login_window_minutes * 60 + 1)
 
 
-def test_guessing_from_many_addresses_is_capped_per_account():
+def test_guessing_from_many_addresses_is_capped_per_account(db):
     now = 1_000_000.0
     for i in range(settings.login_max_failures_per_account):
-        rate_limit.record_login_failure(EMAIL, f"10.0.0.{i}", now)
+        rate_limit.record_login_failure(db, EMAIL, f"10.0.0.{i}", now)
 
     with pytest.raises(Exception) as locked:
-        rate_limit.check_login_allowed(EMAIL, "10.0.1.1", now + 1)
+        rate_limit.check_login_allowed(db, EMAIL, "10.0.1.1", now + 1)
     assert locked.value.status_code == 429
 
 

@@ -47,7 +47,7 @@ export default function Login() {
       footer={
         <>
           New here?{" "}
-          <Link to="/signup" className="font-medium text-slate-900 hover:underline">
+          <Link to="/signup" className="font-semibold text-emerald-700 hover:underline">
             Create an account
           </Link>
         </>
@@ -77,7 +77,7 @@ export default function Login() {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
-        <Link to="/forgot-password" className="-mt-2 self-end text-xs font-medium text-slate-500 hover:text-slate-900">
+        <Link to="/forgot-password" className="-mt-2 self-end text-xs font-medium text-emerald-700 hover:underline">
           Forgot password?
         </Link>
 
@@ -88,6 +88,7 @@ export default function Login() {
         )}
 
         <Button
+          variant="brand"
           type="submit"
           disabled={loginMutation.isPending}
           className="mt-1 w-full"

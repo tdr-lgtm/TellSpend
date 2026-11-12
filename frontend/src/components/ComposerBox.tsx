@@ -13,6 +13,7 @@
 import { type ReactNode, type RefObject, useLayoutEffect, useRef } from "react";
 
 import MicButton from "./MicButton";
+import { brandActionClass } from "../lib/styles";
 
 type ComposerBoxProps = {
   value: string;
@@ -111,7 +112,7 @@ export default function ComposerBox({
         <button
           type="submit"
           disabled={!canSend}
-          className="h-12 shrink-0 rounded-xl bg-slate-900 px-5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-40"
+          className={`h-12 shrink-0 rounded-xl px-5 text-sm font-medium transition disabled:opacity-40 ${brandActionClass}`}
         >
           {isLoading ? loadingLabel : submitLabel}
         </button>

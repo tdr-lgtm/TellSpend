@@ -16,13 +16,20 @@ from tellspend.database.models import AuthToken
 from tellspend.services import account_emails
 
 
+class Outbox(list):
+    def __init__(self):
+        super().__init__()
+        self.html: list[str | None] = []
+
+
 @pytest.fixture
 def outbox(monkeypatch):
-    """Every email "sent", as (to, subject, body)."""
-    sent = []
+    """Every email "sent", as (to, subject, body); their HTML versions in .html."""
+    sent = Outbox()
 
-    def capture(to, subject, body):
+    def capture(to, subject, body, html=None):
         sent.append((to, subject, body))
+        sent.html.append(html)
         return True
 
     monkeypatch.setattr(account_emails, "send_email", capture)
@@ -230,18 +237,38 @@ def forgot(client, email="xyz@example.com"):
     return client.post("/auth/forgot-password", json={"email": email})
 
 
-def test_forgot_password_answers_the_same_for_any_email(client, outbox):
+def test_forgot_password_sends_the_link_and_says_where(client, outbox):
     signup(client)
     outbox.clear()
 
-    known = forgot(client, "  XYZ@example.com ")
-    unknown = forgot(client, "nobody@example.com")
+    response = forgot(client, "  XYZ@example.com ")
 
-    assert known.status_code == unknown.status_code == 202
-    assert known.json() == unknown.json()
+    assert response.status_code == 202
+    assert "sent a reset link to xyz@example.com" in response.json()["detail"]
     [email] = outbox
     assert email[0] == "xyz@example.com"
     assert "/reset-password?token=" in email[2]
+
+
+def test_forgot_password_says_when_no_account_uses_the_email(client, outbox):
+    signup(client)
+    outbox.clear()
+
+    response = forgot(client, "nobody@example.com")
+
+    assert response.status_code == 404
+    assert "No account uses this email" in response.json()["detail"]
+    assert outbox == []
+
+
+def test_forgot_password_says_when_the_email_couldnt_be_sent(client, outbox, monkeypatch):
+    signup(client)
+    monkeypatch.setattr(account_emails, "send_email", lambda *args, **kwargs: False)
+
+    response = forgot(client)
+
+    assert response.status_code == 503
+    assert "couldn't send" in response.json()["detail"]
 
 
 def test_a_reset_changes_the_password_verifies_the_email_and_signs_out_old_logins(client, outbox):
@@ -302,6 +329,82 @@ def test_asking_again_moments_later_sends_nothing_new(client, outbox):
     outbox.clear()
 
     forgot(client)
-    forgot(client)
+    again = forgot(client)
 
+    assert len(outbox) == 1
+    assert again.status_code == 202 and "We just sent a link" in again.json()["detail"]
+
+
+# ---------- the HTML versions ----------
+
+
+def test_the_code_email_has_an_html_version_with_the_same_code(client, outbox):
+    signup(client)
+
+    [email], [html] = outbox, outbox.html
+    code = code_in(email)
+    assert html is not None and "One-Time Password (OTP)" in html
+    # Each digit in its own box, in order.
+    assert all(f">{digit}</div>" in html for digit in code)
+    # The one-click button opens the verify page with the email and code.
+    assert f"/verify-email?email=xyz%40example.com&amp;code={code}" in html
+
+
+def test_the_reset_email_has_a_button_with_the_same_link(client, outbox):
+    signup(client)
+    forgot(client, "xyz@example.com")
+
+    email, html = outbox[-1], outbox.html[-1]
+    token = link_token(email)
+    assert html is not None and "Choose a new password" in html
+    assert f"/reset-password?token={token}" in html
+
+
+def test_a_name_is_never_read_as_html():
+    from tellspend.services.email_templates import verification_email
+
+    html = verification_email("<script>alert(1)</script>", "123456", 15, "http://x/verify-email?code=123456")
+
+    assert "<script>" not in html and "&lt;script&gt;" in html
+
+
+# ---------- someone else's email, never verified ----------
+
+
+def test_an_unverified_email_can_be_signed_up_again_by_its_owner(client, outbox, no_wait):
+    # Person 1 signs up with person 2's email and can't verify it.
+    client.post("/users", json={"email": "owner@example.com", "name": "Squatter", "password": "squatter1"})
+    squatter_code = code_in(outbox[-1])
+
+    # Person 2, the owner, signs up with their own email: not "already exists".
+    response = client.post("/users", json={"email": "owner@example.com", "name": "Owner", "password": "owner1234"})
+
+    assert response.status_code == 201
+    assert response.json()["name"] == "Owner"
+    owner_code = code_in(outbox[-1])
+    assert outbox[-1][0] == "owner@example.com"
+
+    # Person 1's code is retired, and so is their password.
+    assert verify(client, squatter_code, email="owner@example.com").status_code == 400
+    assert verify(client, owner_code, email="owner@example.com").status_code == 200
+    assert login(client, "owner@example.com", "squatter1").status_code == 401
+    assert login(client, "owner@example.com", "owner1234").status_code == 200
+
+
+def test_a_verified_email_is_still_taken(client, outbox):
+    signup(client)
+    verify(client, code_in(outbox[-1]))
+
+    again = signup(client, password="another123")
+
+    assert again.status_code == 409
+    assert "already exists" in again.json()["detail"]
+
+
+def test_signing_up_again_moments_later_sends_no_new_code(client, outbox):
+    signup(client)
+
+    again = signup(client, password="another123")
+
+    assert again.status_code == 429
     assert len(outbox) == 1

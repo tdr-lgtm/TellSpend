@@ -57,7 +57,8 @@ export default function Modal({ title, onClose, discard, children }: ModalProps)
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6">
-      <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-[2px]" onClick={onClose} />
+      {/* Black, not slate-900: dark mode turns slate-900 light, and a dim must stay dark. */}
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px] dark:bg-black/60" onClick={onClose} />
 
       <div
         ref={panelRef}

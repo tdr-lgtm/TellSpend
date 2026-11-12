@@ -1,4 +1,5 @@
 import datetime as dt
+import logging
 import re
 from decimal import Decimal
 
@@ -28,10 +29,13 @@ from tellspend.database.connection import get_db
 from tellspend.database.models import Counterparty, ExpectedMoney, Expense, Settlement, User
 from tellspend.ingestion.builder import build_result
 from tellspend.ingestion.extractor import AssistantUnavailable, extract
+from tellspend.ingestion.guard import clean_input
 from tellspend.services.balances import compute_balances
 from tellspend.services.expense_writer import write_expense
 from tellspend.services.ownership import get_owned_counterparty, get_owned_expense
 from tellspend.services.rate_limit import check_assistant_limit
+
+logger = logging.getLogger("tellspend.assistant")
 
 router = APIRouter(
     prefix="/assistant",
@@ -73,15 +77,21 @@ def read_text(
         HTTPException 503 if the assistant isn't set up or unavailable;
         429 when the user has asked too often.
     """
-    turns = turns or []
+    # Invisible characters out, once, so the model, the instruction guard
+    # and the evidence checks all read the same text.
+    text = clean_input(text)
+    turns = [(asked, clean_input(answer)) for asked, answer in (turns or [])]
     server_today = dt.date.today()
     today = today if today is not None and abs((today - server_today).days) <= 1 else server_today
 
-    check_assistant_limit(user.id)
+    check_assistant_limit(db, user.id)
 
     try:
         extracted = extract(text, today, user.name, turns=turns)
     except AssistantUnavailable as error:
+        # The real reason is for the server's log; users get a plain message
+        # (they can't fix the server's AI account, and needn't know of it).
+        logger.error("Assistant unavailable: %s", error.reason)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=error.user_message,

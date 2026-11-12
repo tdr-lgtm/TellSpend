@@ -5,12 +5,14 @@ auth_tokens), saves it, then sends it.
 """
 
 import datetime as dt
+from urllib.parse import urlencode
 
 from sqlalchemy.orm import Session
 
 from tellspend.database.config import settings
 from tellspend.database.models import User
 from tellspend.services.auth_tokens import RESET_PASSWORD, VERIFY_EMAIL, issue_code, issue_token
+from tellspend.services.email_templates import password_reset_email, verification_email
 from tellspend.services.mailer import send_email
 
 
@@ -36,11 +38,18 @@ def send_verification_email(db: Session, user: User) -> bool:
 
     return send_email(
         user.email,
-        f"{code} is your TellSpend code",
+        f"Your TellSpend verification code (OTP) is {code}",
         f"Hi {user.name},\n\n"
-        f"Your code to verify this email address is:\n\n    {code}\n\n"
-        f"It works for {settings.verify_code_minutes} minutes. "
+        f"Your One-Time Password (OTP) to verify your TellSpend email address is:\n\n{code}\n\n"
+        f"This OTP is valid for {settings.verify_code_minutes} minutes and works only once. "
+        "Don't share it with anyone.\n\n"
         "If you didn't sign up for TellSpend, you can ignore this email.",
+        html=verification_email(
+            user.name,
+            code,
+            settings.verify_code_minutes,
+            f"{settings.frontend_url.rstrip('/')}/verify-email?{urlencode({'email': user.email, 'code': code})}",
+        ),
     )
 
 
@@ -62,12 +71,14 @@ def send_password_reset_email(db: Session, user: User) -> bool:
     )
     db.commit()
 
+    link = _link("/reset-password", token)
     return send_email(
         user.email,
         "Reset your TellSpend password",
         f"Hi {user.name},\n\n"
         f"Someone asked to reset the password for this account. To choose a new one:\n\n"
-        f"{_link('/reset-password', token)}\n\n"
+        f"{link}\n\n"
         f"The link works once and for {settings.reset_password_minutes} minutes. "
         "If it wasn't you, ignore this email: your password stays the same.",
+        html=password_reset_email(user.name, link, settings.reset_password_minutes),
     )

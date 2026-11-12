@@ -18,6 +18,7 @@ import { Card } from "./Card";
 import DraftCard from "./DraftCard";
 import ExpectedCard from "./ExpectedCard";
 import ExpenseComposer from "./ExpenseComposer";
+import ReadingCard from "./ReadingCard";
 import RepaymentCard from "./RepaymentCard";
 
 // Each card gets a stable key, so removing one doesn't disturb the state
@@ -157,9 +158,8 @@ export default function AssistantPanel({ onEditDraft }: AssistantPanelProps) {
       />
 
       {preview.isPending && (
-        <div role="status" className="mt-4">
-          <span className="sr-only">Reading…</span>
-          <span className="block h-24 animate-pulse rounded-2xl bg-slate-100" />
+        <div className="mt-4">
+          <ReadingCard />
         </div>
       )}
 

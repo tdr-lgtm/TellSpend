@@ -12,6 +12,7 @@ import Button from "./Button";
 import Logo from "./Logo";
 import Modal from "./Modal";
 import ProfileForm from "./ProfileForm";
+import ThemeToggle from "./ThemeToggle";
 
 export default function AppLayout() {
   const me = useMe();
@@ -25,6 +26,7 @@ export default function AppLayout() {
           <Logo />
 
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             {me.data && (
               <button
                 type="button"

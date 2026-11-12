@@ -360,20 +360,18 @@ def test_the_profile_can_be_changed_and_the_account_deleted(client, make_user):
 
 
 # 29. how often the assistant can be asked
-def test_the_assistant_refuses_past_its_limit(monkeypatch):
+def test_the_assistant_refuses_past_its_limit(monkeypatch, db):
     from fastapi import HTTPException
     from tellspend.database.config import settings
 
-    rate_limit.reset()
     monkeypatch.setattr(settings, "assistant_requests_per_minute", 2)
-    rate_limit.check_assistant_limit(99, now=1000.0)
-    rate_limit.check_assistant_limit(99, now=1001.0)
+    rate_limit.check_assistant_limit(db, 99, now=1000.0)
+    rate_limit.check_assistant_limit(db, 99, now=1001.0)
     with pytest.raises(HTTPException) as refused:
-        rate_limit.check_assistant_limit(99, now=1002.0)
+        rate_limit.check_assistant_limit(db, 99, now=1002.0)
     assert refused.value.status_code == 429
     # A minute later it's fine again.
-    rate_limit.check_assistant_limit(99, now=1070.0)
-    rate_limit.reset()
+    rate_limit.check_assistant_limit(db, 99, now=1070.0)
 
 
 # 30. a login from before a password change, even the same second

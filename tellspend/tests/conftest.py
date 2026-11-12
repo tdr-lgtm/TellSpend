@@ -9,20 +9,11 @@ from tellspend.database.config import settings
 from tellspend.database.connection import get_db
 from tellspend.database.models import Base, User
 from tellspend.main import app
-from tellspend.services import rate_limit
 
 
 TEST_DATABASE_URL = settings.database_url + "_test"
 
 test_engine = create_engine(TEST_DATABASE_URL)
-
-@pytest.fixture(autouse=True)
-def fresh_login_limits() -> Generator[None, None, None]:
-    # Each test starts with no failed logins counted.
-    rate_limit.reset_login_failures()
-    yield
-    rate_limit.reset_login_failures()
-
 
 @pytest.fixture(autouse=True)
 def never_send_real_email(monkeypatch) -> None:

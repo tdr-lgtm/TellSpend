@@ -141,7 +141,7 @@ def check(case: dict) -> dict:
     try:
         extraction = extract(text, dt.date.today(), USER.name)
     except AssistantUnavailable as error:
-        outcome["error"] = f"model unavailable: {error.user_message}"
+        outcome["error"] = f"model unavailable: {error.reason}"
         outcome["differences"] = [outcome["error"]]
         outcome["seconds"] = time.time() - start
         return outcome
@@ -154,6 +154,7 @@ def check(case: dict) -> dict:
         return outcome
     outcome["seconds"] = time.time() - start
     outcome["got"] = describe(result)
+    outcome["result"] = result
     differences: list[str] = outcome["differences"]
 
     draft_problems = (
@@ -417,6 +418,9 @@ def report(runs: list[list[dict]], command: str, elapsed: list[float]) -> str:
             lines.append(f"- **Run {run_index + 1} got:** {o['got'] or '(no result)'}")
             lines += [f"  - {d}" for d in o["differences"]]
         lines.append("")
+    if any("judge" in o for o in runs[0]):
+        lines += judge_section(runs)
+
     lines += [
         "## Definitions",
         "",
@@ -432,11 +436,63 @@ def report(runs: list[list[dict]], command: str, elapsed: list[float]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def judge_all(outcomes: list[dict]) -> None:
+    """Grade every case that produced drafts with the judge (evals/judge.py)."""
+    from judge import CRITERIA, judge_model, render, _safe_grade
+
+    model = judge_model()
+    graded = [o for o in outcomes if o.get("result") is not None]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        verdicts = list(pool.map(lambda o: _safe_grade(o["case"]["text"], render(o["result"]), model), graded))
+    for o, grades in zip(graded, verdicts):
+        o["judge"] = None if grades is None else {c: getattr(grades, c) for c in CRITERIA}
+
+
+def judge_section(runs: list[list[dict]]) -> list[str]:
+    from judge import CRITERIA
+
+    n = len(runs)
+    lines = [
+        "## LLM-as-a-judge (wording the user reads)",
+        "",
+        f"Judge model: `{settings.eval_judge_model or settings.llm_model}`. It grades what the exact checks",
+        "above can't: are descriptions, notes and questions faithful to the message, plain, and",
+        "only asked when something is really open (see `evals/judge.py`; its agreement with",
+        "hand labels is measured by `uv run python evals/judge.py --calibrate`).",
+        "Pass rate is over the cases where the criterion applied.",
+        "",
+        "| Criterion | " + " | ".join(f"Run {i + 1}" for i in range(n)) + " |",
+        "|---|" + "---|" * n,
+    ]
+    for criterion in CRITERIA:
+        cells = []
+        for outcomes in runs:
+            applied = [o["judge"][criterion] for o in outcomes if o.get("judge") and o["judge"][criterion].applicable]
+            cells.append(pct(sum(v.passed for v in applied), len(applied)))
+        lines.append(f"| {criterion} | {' | '.join(cells)} |")
+    errors = [sum(1 for o in outcomes if "judge" in o and o["judge"] is None) for outcomes in runs]
+    lines += ["", f"Judge calls that failed, per run: {', '.join(map(str, errors))}", ""]
+
+    lines += ["### What the judge failed (run 1)", ""]
+    failed = False
+    for o in runs[0]:
+        for criterion, verdict in (o.get("judge") or {}).items():
+            if verdict.applicable and not verdict.passed:
+                failed = True
+                lines.append(f"- **{criterion}** [{o['case'].get('category')}] {o['case']['text']}")
+                lines.append(f"  - got: {o['got']}")
+                lines.append(f"  - judge: {verdict.reason}")
+    if not failed:
+        lines.append("Nothing.")
+    return lines + [""]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("filter", nargs="?", default="")
     parser.add_argument("--runs", type=int, default=1, help="run every case this many times")
     parser.add_argument("--out", help="write a markdown report to this file")
+    parser.add_argument("--judge", action="store_true", help="also grade the wording with an LLM judge (evals/judge.py)")
     args = parser.parse_args()
     cases = [case for case in CASES if args.filter.lower() in case["text"].lower()]
 
@@ -448,6 +504,12 @@ def main() -> None:
             outcomes = list(pool.map(check, cases))
         elapsed.append(time.time() - started)
         runs.append(outcomes)
+        if args.judge:
+            judge_all(outcomes)
+            for o in outcomes:
+                for criterion, verdict in (o.get("judge") or {}).items():
+                    if verdict.applicable and not verdict.passed:
+                        print(f"JUDGE FAIL {criterion}: {o['case']['text']}\n        {verdict.reason}")
 
         print(f"\n===== run {run + 1}/{args.runs} =====")
         for o in outcomes:
@@ -464,7 +526,8 @@ def main() -> None:
 
     if args.out:
         command = ("uv run python evals/run_evals.py" + (f" {args.filter}" if args.filter else "")
-                   + (f" --runs {args.runs}" if args.runs != 1 else "") + f" --out {args.out}")
+                   + (f" --runs {args.runs}" if args.runs != 1 else "") + (" --judge" if args.judge else "")
+                   + f" --out {args.out}")
         Path(args.out).write_text(report(runs, command, elapsed), encoding="utf-8")
         print(f"report written to {args.out}")
 

@@ -223,6 +223,27 @@ Other commands:
 | Preview the build | `npm run preview` (`frontend/`) |
 | Lint the frontend | `npm run lint` (`frontend/`) |
 
+### With Docker
+
+One command starts a local PostgreSQL, the API (it applies the migrations first) and the web app:
+
+```bash
+docker compose up --build
+```
+
+The same URLs as above work. Settings such as `SECRET_KEY` and the `LLM_*` keys are read from `tellspend/.env`. The database is the local one in Docker, not the one in `.env`, and emails are printed in the API's log (`docker compose logs api`). `docker compose down -v` also deletes the local database.
+
+### CI/CD
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+1. **Backend:** the migrations, then the unit tests, against a real PostgreSQL. Tests that call the AI are skipped, so it costs nothing.
+2. **Frontend:** lint, tests and the production build.
+3. **Docker:** both images are built. On `main` they are also pushed to GitHub's container registry (`ghcr.io/<owner>/tellspend-api` and `-web`).
+4. **Deploy:** on `main`, if every step above passed, it starts a deploy on Render and on Vercel through their deploy hooks.
+
+To turn on deploys, add the repository secrets `RENDER_DEPLOY_HOOK_URL` and `VERCEL_DEPLOY_HOOK_URL` (Settings → Secrets and variables → Actions). A missing secret just skips that deploy. Turn off auto-deploy on Render and Vercel, so that only code that passed CI goes live and nothing deploys twice.
+
 ---
 
 ## Configuration
@@ -250,6 +271,7 @@ Settings are read from `tellspend/.env` (or environment variables) when the serv
 | `LLM_ATTEMPTS` | `2` | Attempts per read (1–3). |
 | `LLM_PROVIDER_SORT` | `throughput` | OpenRouter only: prefer hosts by `throughput`, `price` or `latency`. |
 | `ASSISTANT_REQUESTS_PER_MINUTE` / `_PER_DAY` | `10` / `300` | Per-user limits on assistant reads. |
+| `EVAL_JUDGE_MODEL` | *unset* | Evals only: the model `evals/judge.py` grades with. Best a different model from `LLM_MODEL`; falls back to it. |
 ### Email
 
 | Variable | Default | Description |
@@ -341,6 +363,22 @@ uv run python evals/run_evals.py refund     # only cases whose text contains "re
 ```
 
 Each case is a realistic sentence with its expected amounts, payers, shares and questions. This calls your configured model for every case, so **it costs money** (about $0.10–0.20 per full run with `gpt-oss-120b`), and results vary a little from run to run.
+
+```bash
+uv run python evals/run_evals.py --runs 3 --judge --out evals/eval_results.md   # + LLM-as-a-judge
+uv run python evals/judge.py --calibrate      # how often the judge agrees with hand labels
+```
+
+- **`--judge`** has a second model (`EVAL_JUDGE_MODEL`) grade what exact checks can't: whether descriptions, notes and questions are faithful to the message, plain, and asked only when something is really open. Money is never judged; it's compared exactly.
+
+### What the assistant does to keep AI input and output safe
+
+1. **Input cleaning:** invisible characters are removed and compatibility forms normalised (`guard.clean_input`).
+2. **Instruction guard:** text that addresses the app ("SYSTEM: …", fake tags, "ignore previous instructions") is cut out before the model sees it, in the message and in answers to questions (`guard.py`).
+3. **PII masking:** emails, UPI IDs, card (Luhn-checked), Aadhaar, PAN, phone and account numbers become placeholders before the model call and are restored afterwards (`pii.py`).
+4. **Structured output:** the model must answer in a Pydantic schema (JSON schema); anything else is retried (`extractor.py`).
+5. **Grounding:** every amount and person must be quoted from what the user typed, or it's refused; anything only an instruction backs is dropped (`builder.py`).
+6. **Human review:** nothing is saved until the user presses Save on the draft, which is disabled while questions are open.
 
 ---
 

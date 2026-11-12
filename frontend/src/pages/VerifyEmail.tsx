@@ -4,9 +4,11 @@
  * can be asked for, once a minute.
  *
  * /verify-email?email=you@example.com
+ * /verify-email?email=you@example.com&code=123456   (the email's button:
+ *   the code is filled in and checked once, straight away)
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -24,8 +26,10 @@ const RESEND_WAIT = 60;
 export default function VerifyEmail() {
   const [params] = useSearchParams();
   const email = params.get("email") ?? "";
+  const linked = /^\d{6}$/.test(params.get("code") ?? "") ? (params.get("code") as string) : "";
   const navigate = useNavigate();
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(linked);
+  const triedLink = useRef(false);
   const [wait, setWait] = useState(RESEND_WAIT);
 
   // Count down to when a new code can be asked for.
@@ -56,6 +60,14 @@ export default function VerifyEmail() {
     },
   });
 
+  // Opened from the email's button: check that code once, by itself.
+  useEffect(() => {
+    if (email && linked && !triedLink.current) {
+      triedLink.current = true;
+      verify.mutate(linked);
+    }
+  }, [email, linked, verify]);
+
   if (!email) {
     return <Navigate to="/signup" replace />;
   }
@@ -65,7 +77,7 @@ export default function VerifyEmail() {
       title="Check your email"
       subtitle={`Enter the 6-digit code we sent to ${email}.`}
       footer={
-        <Link to="/login" className="font-medium text-slate-900 hover:underline">
+        <Link to="/login" className="font-semibold text-emerald-700 hover:underline">
           Back to sign in
         </Link>
       }
@@ -102,7 +114,7 @@ export default function VerifyEmail() {
           </p>
         )}
 
-        <Button type="submit" disabled={code.length !== 6 || verify.isPending} className="w-full">
+        <Button variant="brand" type="submit" disabled={code.length !== 6 || verify.isPending} className="w-full">
           {verify.isPending ? "Checking…" : "Verify and continue"}
         </Button>
 
@@ -115,7 +127,7 @@ export default function VerifyEmail() {
               type="button"
               onClick={() => resend.mutate()}
               disabled={resend.isPending}
-              className="font-medium text-slate-900 hover:underline disabled:opacity-50"
+              className="font-semibold text-emerald-700 hover:underline disabled:opacity-50"
             >
               {resend.isPending ? "sending…" : "send a new code"}
             </button>

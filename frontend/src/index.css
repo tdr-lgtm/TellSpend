@@ -1,12 +1,17 @@
 @import "tailwindcss";
 
+/* `dark:` utilities follow the .dark class on <html> (set by lib/theme.ts),
+   not only the system setting, so the user's choice wins. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system,
     BlinkMacSystemFont, "Segoe UI", sans-serif;
   /* Inter's alternate digits and a straight "1" read better in money. */
   font-feature-settings: "cv11", "ss01";
-  color: #0f172a;
-  background: #f7f8fa;
+  color: var(--page-text);
+  background: var(--page-bg);
+  color-scheme: light;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -15,4 +20,248 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+}
+
+/* The sign-in pages' form eases in. */
+@keyframes auth-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.auth-rise {
+  animation: auth-rise 0.45s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-rise {
+    animation: none;
+  }
+}
+
+/* Loading placeholders: a light sweep across a soft bar, in both themes
+   (the colours come from the palette, so dark mode gets dark bars). */
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-slate-100) 25%,
+    var(--color-slate-200) 50%,
+    var(--color-slate-100) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* A status line that changes slides in. */
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.step-in {
+  animation: step-in 0.3s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer,
+  .step-in {
+    animation: none;
+  }
+}
+
+/* Page colours, and the logo's (it swaps like the favicon does). */
+:root {
+  --page-bg: #f7f8fa;
+  --page-text: #0f172a;
+  --logo-bubble: #0f3d2e;
+  --logo-mark: #c8f169;
+}
+
+/*
+ * Dark mode. Every colour utility in Tailwind v4 reads a CSS variable
+ * (bg-white -> var(--color-white)), so redefining the palette here themes
+ * the whole app without a dark: class on every element: white becomes the
+ * card surface, the slate scale is reversed, and each hue's light tints
+ * become dark tints while its dark shades become light ones (generated
+ * from Tailwind's scales).
+ */
+:root.dark {
+  --page-bg: #0d1016;
+  --page-text: #eef1f5;
+  --logo-bubble: #c8f169;
+  --logo-mark: #0f3d2e;
+  color-scheme: dark;
+
+  --color-white: #151a23;
+  --color-black: #000000;
+  --color-slate-50: #1b212c;
+  --color-slate-100: #212836;
+  --color-slate-200: #2b3444;
+  --color-slate-300: #3b4558;
+  --color-slate-400: #677386;
+  --color-slate-500: #8b96a8;
+  --color-slate-600: #a7b0bf;
+  --color-slate-700: #c3cad5;
+  --color-slate-800: #dce1e8;
+  --color-slate-900: #eef1f5;
+  --color-slate-950: #f8fafc;
+  --color-rose-50: #301e2a;
+  --color-rose-100: #3d212e;
+  --color-rose-200: #582535;
+  --color-rose-300: #792b3e;
+  --color-rose-400: #fb7185;
+  --color-rose-500: #f43f5e;
+  --color-rose-600: #fb7185;
+  --color-rose-700: #fda4af;
+  --color-rose-800: #fecdd3;
+  --color-rose-900: #ffe4e6;
+  --color-rose-950: #fff1f2;
+  --color-amber-50: #302a20;
+  --color-amber-100: #3d321f;
+  --color-amber-200: #58421c;
+  --color-amber-300: #7a5518;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #fbbf24;
+  --color-amber-700: #fcd34d;
+  --color-amber-800: #fde68a;
+  --color-amber-900: #fef3c7;
+  --color-amber-950: #fffbeb;
+  --color-sky-50: #142b3b;
+  --color-sky-100: #143347;
+  --color-sky-200: #13445e;
+  --color-sky-300: #12597c;
+  --color-sky-400: #38bdf8;
+  --color-sky-500: #0ea5e9;
+  --color-sky-600: #38bdf8;
+  --color-sky-700: #7dd3fc;
+  --color-sky-800: #bae6fd;
+  --color-sky-900: #e0f2fe;
+  --color-sky-950: #f0f9ff;
+  --color-emerald-50: #142d2e;
+  --color-emerald-100: #143734;
+  --color-emerald-200: #144a3f;
+  --color-emerald-300: #13624d;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #34d399;
+  --color-emerald-700: #6ee7b7;
+  --color-emerald-800: #a7f3d0;
+  --color-emerald-900: #d1fae5;
+  --color-emerald-950: #ecfdf5;
+  --color-violet-50: #23223c;
+  --color-violet-100: #2a2649;
+  --color-violet-200: #382e62;
+  --color-violet-300: #4a3882;
+  --color-violet-400: #a78bfa;
+  --color-violet-500: #8b5cf6;
+  --color-violet-600: #a78bfa;
+  --color-violet-700: #c4b5fd;
+  --color-violet-800: #ddd6fe;
+  --color-violet-900: #ede9fe;
+  --color-violet-950: #f5f3ff;
+  --color-orange-50: #302521;
+  --color-orange-100: #3e2a21;
+  --color-orange-200: #59351f;
+  --color-orange-300: #7c421d;
+  --color-orange-400: #fb923c;
+  --color-orange-500: #f97316;
+  --color-orange-600: #fb923c;
+  --color-orange-700: #fdba74;
+  --color-orange-800: #fed7aa;
+  --color-orange-900: #ffedd5;
+  --color-orange-950: #fff7ed;
+  --color-indigo-50: #1e233c;
+  --color-indigo-100: #232848;
+  --color-indigo-200: #2c3161;
+  --color-indigo-300: #383c80;
+  --color-indigo-400: #818cf8;
+  --color-indigo-500: #6366f1;
+  --color-indigo-600: #818cf8;
+  --color-indigo-700: #a5b4fc;
+  --color-indigo-800: #c7d2fe;
+  --color-indigo-900: #e0e7ff;
+  --color-indigo-950: #eef2ff;
+  --color-red-50: #2f1f27;
+  --color-red-100: #3c2229;
+  --color-red-200: #56272d;
+  --color-red-300: #772d32;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #f87171;
+  --color-red-700: #fca5a5;
+  --color-red-800: #fecaca;
+  --color-red-900: #fee2e2;
+  --color-red-950: #fef2f2;
+  --color-pink-50: #2f2031;
+  --color-pink-100: #3c2238;
+  --color-pink-200: #562846;
+  --color-pink-300: #762f58;
+  --color-pink-400: #f472b6;
+  --color-pink-500: #ec4899;
+  --color-pink-600: #f472b6;
+  --color-pink-700: #f9a8d4;
+  --color-pink-800: #fbcfe8;
+  --color-pink-900: #fce7f3;
+  --color-pink-950: #fdf2f8;
+  --color-fuchsia-50: #2d1f3b;
+  --color-fuchsia-100: #382248;
+  --color-fuchsia-200: #502760;
+  --color-fuchsia-300: #6d2e7f;
+  --color-fuchsia-400: #e879f9;
+  --color-fuchsia-500: #d946ef;
+  --color-fuchsia-600: #e879f9;
+  --color-fuchsia-700: #f0abfc;
+  --color-fuchsia-800: #f5d0fe;
+  --color-fuchsia-900: #fae8ff;
+  --color-fuchsia-950: #fdf4ff;
+  --color-cyan-50: #132d38;
+  --color-cyan-100: #123643;
+  --color-cyan-200: #104958;
+  --color-cyan-300: #0e6073;
+  --color-cyan-400: #22d3ee;
+  --color-cyan-500: #06b6d4;
+  --color-cyan-600: #22d3ee;
+  --color-cyan-700: #67e8f9;
+  --color-cyan-800: #a5f3fc;
+  --color-cyan-900: #cffafe;
+  --color-cyan-950: #ecfeff;
+  --color-blue-50: #1a263c;
+  --color-blue-100: #1c2d49;
+  --color-blue-200: #203962;
+  --color-blue-300: #264982;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #60a5fa;
+  --color-blue-700: #93c5fd;
+  --color-blue-800: #bfdbfe;
+  --color-blue-900: #dbeafe;
+  --color-blue-950: #eff6ff;
+  --color-teal-50: #152d33;
+  --color-teal-100: #15363b;
+  --color-teal-200: #15494a;
+  --color-teal-300: #15615e;
+  --color-teal-400: #2dd4bf;
+  --color-teal-500: #14b8a6;
+  --color-teal-600: #2dd4bf;
+  --color-teal-700: #5eead4;
+  --color-teal-800: #99f6e4;
+  --color-teal-900: #ccfbf1;
+  --color-teal-950: #f0fdfa;
 }
